@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>매뉴얼 챗봇</title>
+<style>
+:root {
+  --bg: #F5F7FA; --surface: #FFFFFF; --ink: #1B2230; --muted: #5E6878; --line: #E1E6EE;
+  --accent: #0B7A75; --accent-soft: #E3F2F1; --danger: #B42318; --user: #1B2230; --user-ink: #FFFFFF;
+  --font: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161D; --surface: #1A1F28; --ink: #E7EBF1; --muted: #9AA4B2; --line: #2A313D;
+    --accent: #3FBDB5; --accent-soft: #173533; --danger: #F07A6E; --user: #2C3442; --user-ink: #E7EBF1;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.6; color: var(--ink); background: var(--bg); word-break: keep-all; }
+button { font: inherit; cursor: pointer; }
+a { color: var(--accent); }
+
+.app { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: 100%; }
+aside { border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.brand { font-weight: 700; font-size: 18px; padding: 20px 20px 4px; letter-spacing: -0.02em; }
+.status { padding: 0 20px 14px; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-top: 7px; flex: none; }
+.dot.ready { background: var(--accent); } .dot.error { background: var(--danger); }
+.dot.busy { animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.tools { display: flex; gap: 8px; padding: 0 20px 14px; }
+.tools button { flex: 1; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.tools button:hover { background: var(--bg); }
+.files { flex: 1; overflow-y: auto; border-top: 1px solid var(--line); padding: 8px 12px 20px; }
+.files h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 8px 6px; }
+.file { padding: 8px; border-radius: 8px; font-size: 13px; }
+.file b { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.file span { color: var(--muted); font-size: 12px; }
+.file .warn { color: var(--danger); }
+.empty-files { color: var(--muted); font-size: 13px; padding: 8px; }
+
+main { display: flex; flex-direction: column; min-height: 0; }
+.log { flex: 1; overflow-y: auto; padding: 28px 24px 12px; }
+.inner { max-width: 760px; margin: 0 auto; }
+.hello { color: var(--muted); padding: 40px 0; }
+.hello h1 { color: var(--ink); font-size: 24px; letter-spacing: -0.03em; margin: 0 0 6px; }
+.msg { margin: 0 0 20px; }
+.msg.user { display: flex; justify-content: flex-end; }
+.msg.user div { background: var(--user); color: var(--user-ink); padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 85%; white-space: pre-wrap; }
+.msg.bot .text { white-space: pre-wrap; }
+.msg.bot .text.wait { color: var(--muted); }
+.msg.bot .text.err { color: var(--danger); }
+.cite { display: inline-block; min-width: 1.5em; padding: 0 4px; margin: 0 1px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; text-align: center; text-decoration: none; vertical-align: 1px; }
+.sources { margin-top: 10px; display: grid; gap: 6px; }
+.sources details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.sources summary { padding: 8px 12px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.sources summary a { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.sources .snip { padding: 0 12px 10px; color: var(--muted); white-space: pre-wrap; max-height: 220px; overflow-y: auto; }
+
+form { border-top: 1px solid var(--line); background: var(--surface); padding: 14px 24px; }
+form .inner { display: flex; gap: 10px; align-items: flex-end; }
+textarea { flex: 1; resize: none; min-height: 46px; max-height: 180px; padding: 12px 14px; font: inherit; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); }
+textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.send { height: 46px; padding: 0 20px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 600; }
+.send:disabled { opacity: .45; cursor: default; }
+.hint { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  .files { display: none; }
+  .log, form { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">매뉴얼 챗봇</div>
+    <div class="status"><i class="dot busy" id="dot"></i><span id="status">연결 중…</span></div>
+    <div class="tools">
+      <button id="open">문서 폴더 열기</button>
+      <button id="reindex">다시 읽기</button>
+    </div>
+    <div class="files"><h2>읽어 둔 문서</h2><div id="files"></div></div>
+  </aside>
+  <main>
+    <div class="log" id="log"><div class="inner" id="msgs">
+      <div class="hello"><h1>무엇이 궁금하세요?</h1>docs 폴더에 넣어 둔 매뉴얼을 근거로 답하고, 근거가 된 쪽을 함께 보여 드려요.</div>
+    </div></div>
+    <form id="form">
+      <div class="inner">
+        <textarea id="q" rows="1" placeholder="예: 비밀번호 초기화는 어떻게 하나요?"></textarea>
+        <button class="send" id="send" disabled>보내기</button>
+      </div>
+      <p class="hint">Enter 로 보내기, Shift+Enter 로 줄바꿈 · 답은 매뉴얼 내용만 근거로 해요</p>
+    </form>
+  </main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fileUrl = (f, p) => "/file/" + f.split("/").map(encodeURIComponent).join("/") + "#page=" + p;
+let phase = "starting", busy = false;
+
+async function poll() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    phase = s.phase;
+    $("status").textContent = s.message + (s.phase === "ready" && !s.embed ? " · 낱말 검색만 사용" : "");
+    $("dot").className = "dot " + (s.phase === "ready" ? "ready" : s.phase === "error" ? "error" : "busy");
+    $("files").innerHTML = s.files.length ? s.files.map(f => `<div class="file"><b>${esc(f.name)}</b>
+      <span>${f.pages}쪽 · 조각 ${f.chunks}개</span>${f.note ? `<br><span class="warn">${esc(f.note)}</span>` : ""}</div>`).join("")
+      : `<div class="empty-files">${phase === "ready" ? "아직 없어요. 문서 폴더에 PDF 를 넣고 다시 읽기를 눌러 주세요." : "…"}</div>`;
+  } catch { $("status").textContent = "프로그램과 연결이 끊겼어요"; $("dot").className = "dot error"; phase = "error"; }
+  updateSend();
+  setTimeout(poll, phase === "ready" || phase === "error" ? 5000 : 1000);
+}
+function updateSend() { $("send").disabled = busy || phase !== "ready" || !$("q").value.trim(); }
+
+$("open").onclick = async () => {
+  const r = await (await fetch("/api/open-docs", { method: "POST" })).json();
+  if (!r.ok) alert("이 폴더에 PDF 를 넣어 주세요:\n" + r.path);
+};
+$("reindex").onclick = async () => {
+  const r = await fetch("/api/reindex", { method: "POST" });
+  if (!r.ok) alert((await r.json()).detail);
+  phase = "indexing";
+};
+
+$("q").addEventListener("input", () => {
+  $("q").style.height = "auto"; $("q").style.height = $("q").scrollHeight + "px"; updateSend();
+});
+$("q").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("form").requestSubmit(); }
+});
+
+function render(text, sources) {
+  // Qwen 계열이 생각 과정을 내보내면 숨긴다
+  text = text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trimStart();
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\[(\d+)\]/g, (m, n) => {
+      const s = sources[n - 1];
+      return s ? `<a class="cite" href="${fileUrl(s.file, s.page)}" target="_blank" title="${esc(s.file)} ${s.page}쪽">${n}</a>` : m;
+    });
+}
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q || busy || phase !== "ready") return;
+  busy = true; $("q").value = ""; $("q").style.height = "auto"; updateSend();
+  document.querySelector(".hello")?.remove();
+  $("msgs").insertAdjacentHTML("beforeend", `<div class="msg user"><div>${esc(q)}</div></div>`);
+  const bot = document.createElement("div");
+  bot.className = "msg bot";
+  bot.innerHTML = `<div class="text wait">매뉴얼에서 찾는 중…</div><div class="sources"></div>`;
+  $("msgs").appendChild(bot);
+  const textEl = bot.querySelector(".text"), srcEl = bot.querySelector(".sources");
+  const scroll = () => { $("log").scrollTop = $("log").scrollHeight; };
+  scroll();
+  let text = "", sources = [];
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }) });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const ev = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+        if (ev.type === "sources") {
+          sources = ev.sources;
+          textEl.textContent = sources.length ? "답을 쓰는 중…" : "";
+        } else if (ev.type === "delta") {
+          text += ev.text; textEl.className = "text"; textEl.innerHTML = render(text, sources);
+        } else if (ev.type === "error") {
+          throw new Error(ev.text);
+        }
+      }
+      scroll();
+    }
+    srcEl.innerHTML = sources.map(s => `<details><summary><span class="cite">${s.n}</span>${esc(s.file)} · ${s.page}쪽
+      <a href="${fileUrl(s.file, s.page)}" target="_blank">원문 보기</a></summary><div class="snip">${esc(s.text)}</div></details>`).join("");
+  } catch (err) {
+    textEl.className = "text err"; textEl.textContent = (text ? text + "\n\n" : "") + err.message;
+  }
+  busy = false; updateSend(); scroll(); $("q").focus();
+};
+
+poll();
+</script>
+</body>
+</html>

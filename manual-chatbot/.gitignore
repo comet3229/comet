@@ -1,0 +1,8 @@
+.venv/
+tools/
+engine/
+data/
+models/**/*.gguf
+docs/*
+!docs/.gitkeep
+__pycache__/
