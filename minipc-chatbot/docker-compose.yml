@@ -1,0 +1,28 @@
+# 미니PC에서 실행: docker compose up -d
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    # NVIDIA GPU가 있으면 아래 주석 해제
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  server:
+    build: ./server
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      COMET_TOKEN: ${COMET_TOKEN:?COMET_TOKEN을 .env에 설정하세요}
+    ports:
+      # 테일스케일 IP에만 열려면 "${TS_IP}:8000:8000" 처럼 지정
+      - "${BIND_ADDR:-0.0.0.0}:8000:8000"
+    depends_on: [ollama]
+    restart: unless-stopped
+
+volumes:
+  ollama:

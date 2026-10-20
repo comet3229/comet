@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comet 문서 챗봇</title>
+<style>
+  :root { --bg:#f7f7f8; --fg:#1d1d1f; --muted:#6b6b70; --card:#fff; --line:#e3e3e6; --accent:#3b5bdb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --fg:#ececf0; --muted:#9a9aa3; --card:#202126; --line:#2f3036; --accent:#7c94ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background:var(--bg); color:var(--fg); }
+  .wrap { display:grid; grid-template-columns: 280px 1fr; height:100vh; }
+  aside { border-right:1px solid var(--line); padding:16px; overflow:auto; }
+  main { display:flex; flex-direction:column; min-height:0; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  .muted { color:var(--muted); font-size:13px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font:inherit; }
+  button:disabled { opacity:.5; }
+  ul { padding-left:18px; font-size:13px; }
+  #log { flex:1; overflow:auto; padding:20px; }
+  .msg { max-width:760px; margin:0 auto 16px; padding:12px 14px; border-radius:10px; background:var(--card); border:1px solid var(--line); white-space:pre-wrap; line-height:1.55; }
+  .msg.user { background:transparent; border-style:dashed; }
+  .src { font-size:12px; color:var(--muted); margin-top:8px; }
+  form { display:flex; gap:8px; padding:12px 20px; border-top:1px solid var(--line); max-width:800px; width:100%; margin:0 auto; }
+  input { flex:1; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); font:inherit; }
+  @media (max-width: 720px) { .wrap { grid-template-columns:1fr; grid-template-rows:auto 1fr; } aside { border-right:0; border-bottom:1px solid var(--line); max-height:30vh; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside>
+    <h1>Comet</h1>
+    <div class="muted" id="server">서버 확인 중…</div>
+    <p class="muted">문서 폴더: <span id="dir"></span></p>
+    <button id="sync">문서 동기화</button>
+    <p class="muted" id="syncmsg"></p>
+    <ul id="docs"></ul>
+  </aside>
+  <main>
+    <div id="log"></div>
+    <form id="f"><input id="q" placeholder="문서에 대해 질문하세요" autocomplete="off"><button>전송</button></form>
+  </main>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const history = [];
+
+async function refresh() {
+  const s = await (await fetch('/api/status')).json();
+  $('#server').textContent = s.server.ok
+    ? `미니PC 연결됨 · ${s.server.chat_model}${s.server.ollama ? '' : ' (Ollama 꺼짐)'}`
+    : `미니PC 연결 실패: ${s.server.error}`;
+  $('#dir').textContent = s.docs_dir;
+  $('#docs').innerHTML = '';
+  for (const d of s.docs) {
+    const li = document.createElement('li');
+    li.textContent = `${d.path} (${d.chunks})`;
+    $('#docs').append(li);
+  }
+}
+
+$('#sync').onclick = async () => {
+  $('#sync').disabled = true; $('#syncmsg').textContent = '동기화 중…';
+  const r = await (await fetch('/api/sync', {method:'POST'})).json();
+  $('#syncmsg').textContent = `추가/갱신 ${r.indexed.length} · 삭제 ${r.removed.length} · 실패 ${r.failed.length}`
+    + r.failed.map(f => `\n${f.path}: ${f.error}`).join('');
+  $('#sync').disabled = false; refresh();
+};
+
+function bubble(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls; d.textContent = text;
+  $('#log').append(d); $('#log').scrollTop = 1e9; return d;
+}
+
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const question = $('#q').value.trim(); if (!question) return;
+  $('#q').value = '';
+  bubble('user', question);
+  const out = bubble('bot', '');
+  let answer = '', buf = '';
+  const res = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({question, history})});
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let sources = [];
+  for (;;) {
+    const {value, done} = await reader.read(); if (done) break;
+    buf += dec.decode(value, {stream:true});
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const ev = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+      if (ev.sources) sources = ev.sources;
+      if (ev.token) { answer += ev.token; out.textContent = answer; }
+      if (ev.error) out.textContent = '오류: ' + ev.error;
+    }
+    $('#log').scrollTop = 1e9;
+  }
+  if (sources.length) {
+    const s = document.createElement('div'); s.className = 'src';
+    s.textContent = '출처: ' + sources.map((x, n) => `[${n+1}] ${x.source}${x.page ? ' p.' + x.page : ''}`).join('  ');
+    out.append(s);
+  }
+  history.push({role:'user', content:question}, {role:'assistant', content:answer});
+};
+
+refresh();
+</script>
+</body>
+</html>
