@@ -1,7 +1,10 @@
 # 미니PC에서 실행: docker compose up -d
+# - 기본: 미니PC 안의 Ollama 사용 (.env 에 COMPOSE_PROFILES=ollama)
+# - 워크스테이션 LLM 사용: COMPOSE_PROFILES 를 비우고 OLLAMA_URL 또는 OPENAI_BASE_URL 을 워크스테이션 주소로
 services:
   ollama:
     image: ollama/ollama:latest
+    profiles: [ollama]
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
@@ -14,14 +17,20 @@ services:
   server:
     build: ./server
     environment:
-      OLLAMA_URL: http://ollama:11434
+      LLM_BACKEND: ${LLM_BACKEND:-ollama}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       COMET_TOKEN: ${COMET_TOKEN:?COMET_TOKEN을 .env에 설정하세요}
     ports:
       # 테일스케일 IP에만 열려면 "${TS_IP}:8000:8000" 처럼 지정
       - "${BIND_ADDR:-0.0.0.0}:8000:8000"
-    depends_on: [ollama]
+    depends_on:
+      ollama:
+        condition: service_started
+        required: false
     restart: unless-stopped
 
 volumes:

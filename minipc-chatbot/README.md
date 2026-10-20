@@ -34,7 +34,7 @@ docker compose exec ollama ollama pull qwen2.5:7b
 docker compose exec ollama ollama pull bge-m3
 ```
 
-확인: `curl http://minipc:8000/health` → `"ollama": true`
+확인: `curl http://minipc:8000/health` → `"llm": true`
 
 **모델 선택 가이드** (CPU만 있는 미니PC 기준)
 
@@ -64,6 +64,37 @@ python app.py
 
 브라우저에서 http://127.0.0.1:8501 을 열고 **문서 동기화**를 누른 뒤 질문하면 됩니다.
 문서를 추가 · 수정 · 삭제한 뒤 다시 동기화하면 바뀐 파일만 처리합니다.
+
+## 3. (선택) GPU 워크스테이션의 LLM 사용
+
+미니PC는 파싱 · 중계만 맡고, 무거운 LLM은 GPU가 있는 워크스테이션에서 돌리는 구성입니다.
+워크스테이션도 같은 tailnet에 넣으면 미니PC가 `http://workstation:<포트>`로 접근합니다.
+
+```
+사용자 PC ──▶ 미니PC (server: 파싱·중계) ──▶ 워크스테이션 (Ollama / LM Studio / vLLM, GPU)
+```
+
+**워크스테이션 쪽**
+
+| 도구 | 설정 | 미니PC `.env` |
+|---|---|---|
+| Ollama | 환경변수 `OLLAMA_HOST=0.0.0.0` 후 재시작, `ollama pull <모델>` · `ollama pull bge-m3` | `LLM_BACKEND=ollama`, `OLLAMA_URL=http://workstation:11434` |
+| LM Studio | Developer 탭 → Start Server, "Serve on Local Network" 켜기, 채팅 모델 + 임베딩 모델 로드 | `LLM_BACKEND=openai`, `OPENAI_BASE_URL=http://workstation:1234/v1` |
+| vLLM / llama.cpp | `--host 0.0.0.0`로 실행 (임베딩용 서버를 따로 띄우거나 Ollama 병행) | `LLM_BACKEND=openai`, `OPENAI_BASE_URL=http://workstation:8000/v1` |
+
+`.env`에서 `COMPOSE_PROFILES=ollama` 줄을 지우면 미니PC에서는 Ollama 컨테이너가 뜨지 않습니다 (`.env.example`의 B/C 예시 참고).
+`CHAT_MODEL`/`EMBED_MODEL`은 워크스테이션에 로드된 모델 이름과 정확히 같아야 합니다. `curl http://minipc:8000/health`의 `models`에서 확인할 수 있습니다.
+
+**GPU VRAM별 모델 가이드** (4bit 양자화 기준)
+
+| VRAM | 모델 |
+|---|---|
+| 8~12GB | `qwen2.5:7b`, `gemma3:12b`(12GB) |
+| 16~24GB | `qwen2.5:14b`, `gemma3:27b`(24GB) |
+| 24GB×2 / 48GB+ | `qwen2.5:32b`, `llama3.3:70b`(48GB+) |
+
+> 임베딩 모델을 바꾸면(예: 미니PC Ollama의 bge-m3 → LM Studio의 다른 임베딩) 클라이언트 인덱스를 지우고 다시 동기화해야 합니다.
+> 워크스테이션이 꺼져 있으면 답변이 실패하므로, 상시 켜두기 어렵다면 B안(미니PC Ollama)과 번갈아 쓰세요.
 
 ## Tailscale 대신 쓸 수 있는 방법
 

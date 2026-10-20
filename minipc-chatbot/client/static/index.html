@@ -50,7 +50,7 @@ const history = [];
 async function refresh() {
   const s = await (await fetch('/api/status')).json();
   $('#server').textContent = s.server.ok
-    ? `미니PC 연결됨 · ${s.server.chat_model}${s.server.ollama ? '' : ' (Ollama 꺼짐)'}`
+    ? `미니PC 연결됨 · ${s.server.chat_model}${s.server.llm ? "" : " (LLM 서버 연결 안 됨)"}`
     : `미니PC 연결 실패: ${s.server.error}`;
   $('#dir').textContent = s.docs_dir;
   $('#docs').innerHTML = '';

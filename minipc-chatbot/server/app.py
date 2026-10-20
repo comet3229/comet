@@ -1,4 +1,8 @@
-"""미니PC 연산 서버: 문서 파싱, 임베딩, LLM 답변 생성. 사용자 문서를 디스크에 저장하지 않는다."""
+"""미니PC 연산 서버: 문서 파싱, 임베딩, LLM 답변 생성. 사용자 문서를 디스크에 저장하지 않는다.
+
+LLM은 Ollama(기본) 또는 OpenAI 호환 서버(LM Studio, vLLM, llama.cpp 등)를 사용하며,
+같은 미니PC가 아닌 GPU 워크스테이션에 둘 수도 있다 (OLLAMA_URL / OPENAI_BASE_URL).
+"""
 import json
 import os
 import secrets
@@ -10,7 +14,10 @@ from pydantic import BaseModel
 
 import parsers
 
+LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")  # ollama | openai
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1").rstrip("/")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "bge-m3")
 API_TOKEN = os.getenv("COMET_TOKEN", "")
@@ -46,15 +53,26 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
 
 
-@app.get("/health")
-async def health():
+def _openai_headers() -> dict:
+    return {"Authorization": f"Bearer {OPENAI_API_KEY}"} if OPENAI_API_KEY else {}
+
+
+async def list_models() -> list[str] | None:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
+            if LLM_BACKEND == "openai":
+                r = await client.get(f"{OPENAI_BASE_URL}/models", headers=_openai_headers())
+                return [m["id"] for m in r.json().get("data", [])]
             r = await client.get(f"{OLLAMA_URL}/api/tags")
-            models = [m["name"] for m in r.json().get("models", [])]
-    except httpx.HTTPError:
-        models = None
-    return {"ok": True, "ollama": models is not None, "models": models,
+            return [m["name"] for m in r.json().get("models", [])]
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+@app.get("/health")
+async def health():
+    models = await list_models()
+    return {"ok": True, "backend": LLM_BACKEND, "llm": models is not None, "models": models,
             "chat_model": CHAT_MODEL, "embed_model": EMBED_MODEL}
 
 
@@ -75,9 +93,15 @@ async def parse(file: UploadFile = File(...)):
 @app.post("/embed", dependencies=[Depends(check_token)])
 async def embed(req: EmbedRequest):
     async with httpx.AsyncClient(timeout=300) as client:
-        r = await client.post(f"{OLLAMA_URL}/api/embed", json={"model": EMBED_MODEL, "input": req.texts})
+        if LLM_BACKEND == "openai":
+            r = await client.post(f"{OPENAI_BASE_URL}/embeddings", headers=_openai_headers(),
+                                  json={"model": EMBED_MODEL, "input": req.texts})
+        else:
+            r = await client.post(f"{OLLAMA_URL}/api/embed", json={"model": EMBED_MODEL, "input": req.texts})
     if r.status_code != 200:
-        raise HTTPException(502, f"ollama embed error: {r.text}")
+        raise HTTPException(502, f"embed error: {r.text}")
+    if LLM_BACKEND == "openai":
+        return {"vectors": [d["embedding"] for d in sorted(r.json()["data"], key=lambda d: d["index"])]}
     return {"vectors": r.json()["embeddings"]}
 
 
@@ -96,15 +120,25 @@ def build_messages(req: ChatRequest) -> list[dict]:
 @app.post("/chat", dependencies=[Depends(check_token)])
 async def chat(req: ChatRequest):
     payload = {"model": CHAT_MODEL, "messages": build_messages(req), "stream": True}
+    if LLM_BACKEND == "openai":
+        url, headers = f"{OPENAI_BASE_URL}/chat/completions", _openai_headers()
+    else:
+        url, headers = f"{OLLAMA_URL}/api/chat", {}
 
     async def stream():
         async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=payload) as r:
+            async with client.stream("POST", url, json=payload, headers=headers) as r:
                 if r.status_code != 200:
                     yield f"[오류] LLM 서버 응답 {r.status_code}"
                     return
                 async for line in r.aiter_lines():
-                    if line:
+                    if LLM_BACKEND == "openai":
+                        # SSE: "data: {...}" ... "data: [DONE]"
+                        if not line.startswith("data:") or line.endswith("[DONE]"):
+                            continue
+                        choices = json.loads(line[5:]).get("choices") or [{}]
+                        yield choices[0].get("delta", {}).get("content") or ""
+                    elif line:
                         yield json.loads(line).get("message", {}).get("content", "")
 
     return StreamingResponse(stream(), media_type="text/plain; charset=utf-8")
